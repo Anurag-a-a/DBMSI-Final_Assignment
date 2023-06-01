@@ -1,0 +1,173 @@
+-- Assignment 2
+-- Anurag Anand Athwale 
+-- 20012263
+--aathwale@stevens.edu
+
+--Q1) Query 
+--For each customer, product, month and state combination, compute 
+--(1) the customer's average sale of this product for the given month and state, 
+--(2) the customer’s average sale for the given month and state, but for all other products
+--(3) the customer’s average sale for the given product and state, but for all other months
+--(4) the average sale of the product and the month but for all other states.Answer
+
+--Query Answer
+-- Base query for getting the average quantity based on cust month state and current product
+with base as (
+	select cust, prod,month as mo, state as st, avg(quant) as prod_avg
+	from sales 
+	group by cust, prod, mo, st 
+),
+-- Query for getting the average quantity of other products than the product under consideration
+avg_otherprod as (
+	select s.cust, base.prod, s.month as mo, s.state as st, prod_avg, avg(quant) as otherprod_avg
+	from sales s 
+	inner join base 
+		on s.cust = base.cust 
+		and s.prod != base.prod
+		and s.month  = base.mo
+		and s.state = base.st
+	group by s.cust, base.prod, s.month, s.state, prod_avg
+),
+-- Query for getting the average quantity of current product based on other months than the month under consideration
+avg_month as (
+	select s.cust, a1.prod, a1.mo as mo, s.state as st,prod_avg, otherprod_avg, avg(quant) as month_avg
+	from sales s 
+	inner join avg_otherprod as a1
+		on s.cust = a1.cust 
+		and s.prod = a1.prod
+		and s.month != a1.mo
+		and s.state = a1.st
+	group by s.cust, a1.prod, a1.mo, s.state,prod_avg,otherprod_avg
+)
+-- Query for getting the average quantity of current product based on other state than the state under consideration
+select s.cust as "CUSTOMER", a2.prod as "PRODUCT", a2.mo "MONTH", a2.st as "STATE",prod_avg as "CUST_AVG",otherprod_avg as "OTHER_PROD_AVG",month_avg as "OTHER_MONTH_AVG",avg(quant) as "OTHER_STATE_AVG"
+from sales s 
+inner join avg_month as a2
+	on s.cust = a2.cust 
+	and s.prod = a2.prod
+	and s.month = a2.mo
+	and s.state != a2.st
+group by s.cust, a2.prod, a2.mo, a2.st,prod_avg,otherprod_avg,month_avg
+
+--===========================================================================================================================================================================
+--Q2) For customer, product and state, show the average sales before and after each month
+--(e.g., February (month 2), show average sales of January (month 1) and March
+--(month 3). For “before” January and “after” December, display <NULL>. The “YEAR”
+--attribute is not considered for this query – for example, both January of 2017 and
+--January of 2018 are considered January regardless of the year
+
+
+--Query Answer
+-- base query for getting the average of quantity based on cust, prod, state and current month wise 
+with Base_Q as(
+		select cust, prod, state as st, month as mo, avg(quant) as normal_qnt
+		from sales 
+		group by cust, prod, st, mo
+),
+-- Query for getting the average of quantity for the previous month will return null if the current month is 1
+AVG_Qnt_before as(
+		select q1.cust, q1.prod, q1.st, q1.mo, q2.normal_qnt as before_qnt, q1.normal_qnt as normal_qnt
+		from Base_Q q1
+		left join Base_Q q2
+			on q1.cust = q2.cust
+			and q1.prod = q2.prod
+			and q1.st = q2.st
+			and q2.mo = q1.mo - 1
+), 
+-- Query for getting the average of quantity for the next month will return null if the current month is 12
+AVG_Qnt_after as(
+		select q3.cust, q3.prod, q3.st, q3.mo, q4.normal_qnt as after_qnt, q3.normal_qnt as normal_qnt
+		from Base_Q q3
+		left join Base_Q q4
+			on q3.cust = q4.cust
+			and q3.prod = q4.prod
+			and q3.st = q4.st
+			and q4.mo = q3.mo + 1
+)
+-- Query for combining all the values from above queries
+select q5.cust as "CUSTOMER", q5.prod as "PRODUCT", q5.st as "STATE", q5.mo "MONTH", q5.before_qnt "BEFORE_AVG", q5.normal_qnt "CURRENT_AVG", q6.after_qnt as "AFTER_AVG"
+from AVG_Qnt_before q5 
+inner join AVG_Qnt_after q6
+	on q5.cust = q6.cust 
+	and q5.prod = q6.prod 
+	and q5.st = q6.st 
+	and q5.mo = q6.mo 
+	and q5.normal_qnt = q6.normal_qnt
+group by q5.cust, q5.prod, q5.st, q5.mo, q5.before_qnt, q5.normal_qnt, q6.after_qnt
+
+
+--===========================================================================================================================================================================
+
+
+--Q3) For each product, find the median sales quantity (assume an odd number of sales for
+--simplicity of presentation). (NOTE – “median” is defined as “denoting or relating to a
+--value or quantity lying at the midpoint of a frequency distribution of observed values or
+--quantities, such that there is an equal probability of falling above or below it.” E.g.,
+--Median value of the list {13, 23, 12, 16, 15, 9, 29} is 15
+
+--Query Answer
+
+WITH query1 AS(
+SELECT s.prod, s.quant, (SELECT count(*) FROM sales WHERE quant <= s.quant AND prod = s.prod) COUNT
+FROM sales s),
+
+query2 AS(
+SELECT prod, (max(COUNT)/2 + 1) median
+FROM query1
+GROUP BY prod),
+
+query3 AS(
+SELECT query1.prod, query1.quant
+FROM query1, query2
+WHERE query1.prod = query2.prod AND query1.count >= query2.median)
+
+SELECT prod as "PRODUCT", min(quant) as "MEDIAN_QUANT"
+FROM query3
+GROUP BY prod;
+
+--===========================================================================================================================================================================
+
+
+--Q4) For customer and product, find the month by which time, 75% of the sales quantities
+--have been purchased. Again, for this query, the “YEAR” attribute is not considered.
+--Another way to view this query is to pretend all 10,000 rows of sales data are from the
+--same year.
+
+-- Query Answer
+-- Query for calculating cust, product wise sum of quantities for each month  
+with total as(
+select cust,prod, month, sum(quant) as tot
+	from sales
+	group by cust, prod, month
+
+),
+
+-- summation of quantites for months uptill current month under consideration
+mon_wise_tot as (
+	select cust, prod, mon, sum(month_tot) as Summation
+	from
+	( 
+		-- creating a parallel moth and its respective quant column for calculating the sum 
+		select q1.cust, q1.prod, q1.month as mon, q2.month, q2.tot as month_tot
+		from total as q1, total as q2
+		where q1.cust = q2.cust and q1.prod = q2.prod and q1.month >=q2.month
+		group by q1.cust, q1.prod, q1.month,q2.month,q2.tot
+	) as mon_par_col 	
+	group by cust, prod, mon
+)
+-- finding the month in which 75 % purchase of prod by the consumer had been reached 
+select distinct on (q3.cust,q3.prod)
+	q3.cust as "CUSTOMER", q3.prod as "PRODUCT", q3.mon as "75%_Purchased_BY_MONTH"
+	from mon_wise_tot as q3
+	left join
+	(
+		--Calculating the actual total purchase of the product by customer till the 12 th month
+		select cust, prod, sum(q4.tot) as overall_tot
+		from total as q4
+		group by q4.cust, q4.prod
+	)
+	as q5 on q3.cust =q5.cust and q3.prod = q5.prod
+	where 0.75 * q5.overall_tot <= q3.Summation
+	
+
+	

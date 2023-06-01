@@ -1,0 +1,160 @@
+------------------------------Assignment no 1 -------------------------
+--Q1)For each product compute the maximum and minimum sales quantities along with the
+--corresponding customer (who purchased the product), dates (i.e., dates of those
+--maximum and minimum sales quantities) and the state in which the sale transaction
+--took place
+
+WITH base AS(
+	
+	SELECT prod,min(quant) as Q_MIN,max(quant) AS Q_MAX,avg(quant) AS Q_AVG
+	FROM sales 
+	GROUP BY prod
+),
+MAX_Part AS(
+	SELECT b.prod,b.Q_MAX,S.cust,s.date,S.state 
+	FROM base b, sales S 
+	WHERE b.prod = S.prod AND b.Q_MAX = S.quant),
+MIN_Part AS(
+	SELECT b.prod,b.Q_MIN,S.cust,s.date,S.state 
+	FROM base b, sales S 
+	WHERE b.prod = S.prod AND b.Q_MIN = S.quant
+)
+	SELECT b.prod as "PRODUCT",b.Q_MAX as "MAX_Quant",MAX1.cust as "MAX_CUST",MAX1.date as "MAX_Quant_Date",MAX1.state as "MAX_Quant_ST",MIN1.cust as "MIN_CUST",b.Q_MIN as "MIN_Quant",MIN1.date as "MIN_Quant_Date",MIN1.state as "MIN_Quant_ST",Round(b.Q_AVG) as "AVG_Q"
+	FROM MAX_Part AS MAX1, MIN_Part AS MIN1, base b 
+	WHERE MIN1.prod = MAX1.prod AND MIN1.prod = b.prod AND MAX1.prod = b.prod
+	
+---------------------------------------------------------------------------------
+--Q2) For each combination of customer and product, output the maximum sales quantities
+--for NY and minimum sales quantities for NJ and CT in 3 separate columns. Like the
+--first report, display the corresponding dates (i.e., dates of those maximum and
+--minimum sales quantities). Furthermore, for CT and NJ, include only the sales that
+--occurred after 2000; for NY, include all sales
+
+
+with a1 as (
+				select cust,prod,state,min(quant) as m1,max(quant) as m2 
+				from sales 
+				group by cust,prod,state
+	),
+a2 as (
+			select s.cust,s.prod,s.state as ns,quant as nq,s.date as nd 
+			from a1 
+			inner join sales s on a1.prod = s.prod and a1.cust = s.cust and quant = m2 and s.state = 'NY'
+	),
+a3 as (
+			select s.cust,s.prod,s.state as ns,quant as nq,s.date as nd,s.year as y 
+			from a1 
+			inner join sales s on a1.prod = s.prod and a1.cust = s.cust 
+			where quant = m1 and s.state = 'NJ' and s.year > 2000
+	),
+a4 as (
+			select s.cust,s.prod,s.state as ns,quant as nq,s.date as nd,s.year as y 
+			from a1 
+			inner join sales s on a1.prod = s.prod and a1.cust = s.cust and quant = m1 and s.state = 'CT' and s.year > 2000
+	)
+
+select distinct a1.cust,a1.prod,a2.ns,a2.nq,a2.nd,a3.ns,a3.nq,a3.nd,a4.ns,a4.nq,a4.nd 
+from a1 
+inner join a2 on a1.prod = a2.prod and a1.cust = a2.cust
+inner join a3 ON a1.prod = a3.prod and a1.cust = a3.cust
+inner join a4 ON a1.prod = a4.prod and a1.cust = a4.cust
+
+---------------------------------------------------------------------------------
+
+--Q3)For each of the 12 months (regardless of the year), find the most “popular” and least
+--“popular” states (those states with most and least total sales quantities) and the
+--corresponding total sales quantities (i.e., SUMs)
+
+with base_q as (
+				select state,month,sum(quant)as sum_q
+				from sales 
+				group by state,month
+			),
+MAX_MIN as (
+				select max(sum_q)as MOST_POP_TOTAL_Q,min(sum_q) as LEAST_POP_TOTAL_Q,month
+				from base_q
+				group by MONTH
+			),
+MAX_ST as(
+			select  MAX_MIN.month, base_q.state as MOST_POPULAR_STATE, MAX_MIN.MOST_POP_TOTAL_Q, MAX_MIN.LEAST_POP_TOTAL_Q
+			from MAX_MIN,base_q
+			where MAX_MIN.month=base_q.month and base_q.sum_q=MAX_MIN.MOST_POP_TOTAL_Q
+		)
+select  MAX_ST.month as "MONTH", MAX_ST.MOST_POPULAR_STATE as "MOST_POPULAR_ST", MAX_ST.MOST_POP_TOTAL_Q as "MOST_POP_TOTAL_Q",
+base_q.state as "LEAST_POPULAR_ST", MAX_ST.LEAST_POP_TOTAL_Q as "LEAST_POP_TOTAL_Q" 
+from MAX_ST,base_q
+where MAX_ST.month=base_q.month and MAX_ST.LEAST_POP_TOTAL_Q=base_q.sum_q
+order by MAX_ST.month
+
+---------------------------------------------------------------------------------
+
+--Q4)For each customer, find the “most favorite” product (which the customer purchased
+--the most), the “least favorite” product (which the customer purchased the least), the
+--“most favorable state” (where the most amounts of purchases were made) and the
+--“least favorable state” (where the least amounts of purchases were made)
+
+
+with prod_q as (
+				select cust,prod,sum(quant)as p_cnt
+				from sales 
+				group by cust,prod
+			),
+mxmn as(
+		select cust,max(p_cnt) as mxp,min(p_cnt) as mnp 
+		from prod_q as a1 
+		group by cust
+	),
+mxprd as(
+		select a1.cust,a1.prod as mx_prod 
+		from prod_q as a1,mxmn as a2
+		where a1.cust = a2.cust and a1.p_cnt = a2.mxp
+	),
+mxp as(
+		select a1.cust,a3.mx_prod,a1.prod as mn_prod 
+		from prod_q as a1,mxmn as a2,mxprd as a3 
+		where a1.cust = a2.cust and a1.p_cnt = a2.mnp and a2.cust = a3.cust
+	),
+state_q as (
+		select cust,state,sum(quant)as s_cnt
+		from sales 
+		group by cust,state
+	),
+s_mxmn as(
+		select cust,max(s_cnt) as mxs,min(s_cnt) as mns 
+		from state_q as a5 
+		group by cust
+	),
+mx_state as(
+		select a5.cust,a5.state as mx_state 
+		from state_q as a5,s_mxmn as a6 
+		where a5.cust = a6.cust and a5.s_cnt = a6.mxs
+	),
+mxs  as(
+		select a5.cust,a7.mx_state,a5.state as mn_state 
+		from state_q as a5,s_mxmn as a6,mx_state a7 
+		where a5.cust = a6.cust  and a5.s_cnt = a6.mns and a5.cust = a7.cust
+	)
+select a4.cust,a4.mx_prod as "mx_prod",a4.mn_prod as "MN_PROD",
+a8.mx_state as "mx_state",a8.mn_state as "MN_STATE" 
+from mxp as a4,mxs as a8
+where a4.cust = a8.cust
+
+---------------------------------------------------------------------------------
+
+--Q5)Show for each customer and product combination, the total sales quantities for 4
+--quarters, Q1, Q2, Q3 and Q4 (in four separate columns) – Q1 being the first 3 months
+--of the year (Jan, Feb & Mar), Q2 the next 3 months (Apr, May & Jun), and so on –
+--ignore the YEAR component of the dates (i.e., 3/11/2001 is considered the same date
+--as 3/11/2002, etc.). Also compute the average for the “whole” year (again ignoring
+--the YEAR component, meaning simply compute AVG) along with the total quantities
+--(SUM) and the counts (COUNT)
+
+select cust as "CUSTOMER", prod as "PRODUCT",
+	Sum(case when month between 1 and 3 then quant end) as "Q1_TOT",
+	Sum(case when month between 4 and 6 then quant end) as "Q2_TOT",
+	Sum(case when month between 7 and 9 then quant end) as "Q3_TOT",
+	Sum(case when month between 10 and 12 then quant end) as "Q4_TOT",
+	avg(quant) as "AVERAGE", Sum(quant) as "TOTAL", count(quant) as "COUNT"
+	from sales
+	group by cust,prod
+	
